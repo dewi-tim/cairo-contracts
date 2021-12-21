@@ -115,10 +115,9 @@ func ERC1155_safe_transfer_from{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*
     ERC1155_balances.write(id_low=id.low, id_high=id.high, account=_from, value=new_balance)
 
     # Add to reciever
-    # (forall id : sum balances[id] = total supply < uint256_max)
-    # => no overflows (as in ERC20)
     let (to_balance : Uint256) = ERC1155_balances.read(id_low=id.low, id_high=id.high, account=to)
-    let (new_balance : Uint256, _) = uint256_add(to_balance, amount)
+    let (new_balance : Uint256, carry) = uint256_add(to_balance, amount)
+    assert carry = 0
     ERC1155_balances.write(id_low=id.low, id_high=id.high, account=to, value=new_balance)
     # Todo: doSafeTransferAcceptanceCheck
     return ()
@@ -161,7 +160,8 @@ func ERC1155_safe_batch_transfer_from{
 
     # add to
     let (to_balance : Uint256) = ERC1155_balances.read(id_low=id.low, id_high=id.high, account=to)
-    let (new_balance : Uint256, _) = uint256_add(to_balance, amount)  # as above
+    let (new_balance : Uint256, carry) = uint256_add(to_balance, amount)
+    assert carry = 0
     ERC1155_balances.write(id_low=id.low, id_high=id.high, account=to, value=new_balance)
 
     # Recursive call
