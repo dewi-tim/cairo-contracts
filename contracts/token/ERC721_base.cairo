@@ -2,27 +2,30 @@
 
 from starkware.cairo.common.cairo_builtins import HashBuiltin, SignatureBuiltin
 from starkware.cairo.common.math import assert_not_zero, assert_not_equal
+from starkware.cairo.common.alloc import alloc
 from starkware.starknet.common.syscalls import get_caller_address
 from starkware.cairo.common.uint256 import (
     Uint256, uint256_add, uint256_sub
 )
 
-from contracts.ERC165 import (
+from contracts.ERC165_base import (
     ERC165_register_interface
 )
 
 from contracts.token.IERC721_Receiver import IERC721_Receiver
+
+from contracts.IAccount import IAccount
 
 #
 # Storage
 #
 
 @storage_var
-func ERC721_name() -> (name: felt):
+func ERC721_name_() -> (name: felt):
 end
 
 @storage_var
-func ERC721_symbol() -> (symbol: felt):
+func ERC721_symbol_() -> (symbol: felt):
 end
 
 @storage_var
@@ -53,8 +56,8 @@ func ERC721_initializer{
         name: felt,
         symbol: felt,
     ):
-    ERC721_name.write(name)
-    ERC721_symbol.write(symbol)
+    ERC721_name_.write(name)
+    ERC721_symbol_.write(symbol)
     # register IERC721
     ERC165_register_interface('0x80ac58cd')
     return ()
@@ -64,21 +67,21 @@ end
 # Getters
 #
 
-func ERC721_name_{
+func ERC721_name{
         syscall_ptr : felt*,
         pedersen_ptr : HashBuiltin*,
         range_check_ptr
     }() -> (name: felt):
-    let (name) = ERC721_name.read()
+    let (name) = ERC721_name_.read()
     return (name)
 end
 
-func ERC721_symbol_{
+func ERC721_symbol{
         syscall_ptr : felt*,
         pedersen_ptr : HashBuiltin*,
         range_check_ptr
     }() -> (symbol: felt):
-    let (symbol) = ERC721_symbol.read()
+    let (symbol) = ERC721_symbol_.read()
     return (symbol)
 end
 
@@ -161,7 +164,13 @@ func ERC721_setApprovalForAll{
     }(operator: felt, approved: felt):
     # Ensures caller is neither zero address nor operator
     let (caller) = get_caller_address()
-    assert_not_zero(caller)
+    assert_not_zero(caller * operator) 
+    # note this pattern as we'll frequently use it: 
+    #   instead of making an `assert_not_zero` call for each address
+    #   we can always briefly write `assert_not_zero(a0 * a1 * ... * aN)`.
+    #   This is because these addresses are field elements,
+    #   meaning that a*0==0 for all a in the field, 
+    #   and a*b==0 implies that at least one of a,b are zero in the field
     assert_not_equal(caller, operator)
 
     # Make sure `approved` is a boolean (0 or 1)
@@ -381,9 +390,12 @@ func _check_onERC721Received{
         data_len: felt, 
         data: felt*
     ) -> (success: felt):
-    # We need to consider how to differentiate between EOA and contracts
-    # and insert a conditional to know when to use the proceeding check
     let (caller) = get_caller_address()
+    let (is_account) = IAccount.is_account(to)
+    if is_account == 1:
+        return (1)
+    end
+
     # The first parameter in an imported interface is the contract
     # address of the interface being called
     let (selector) = IERC721_Receiver.onERC721Received(

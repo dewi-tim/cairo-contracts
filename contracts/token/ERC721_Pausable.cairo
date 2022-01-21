@@ -16,18 +16,18 @@ from contracts.token.ERC721_base import (
     ERC721_setApprovalForAll, 
     ERC721_transferFrom,
     ERC721_safeTransferFrom,
-    ERC721_mint,
-    ERC721_burn
-)
-
-from contracts.token.ERC721_Metadata_base import (
-    ERC721_Metadata_initializer,
-    ERC721_Metadata_tokenURI,
-    ERC721_Metadata_setTokenURI,
+    ERC721_mint
 )
 
 from contracts.ERC165_base import (
     ERC165_supports_interface
+)
+
+from contracts.Pausable_base import (
+    Pausable_paused,
+    Pausable_pause,
+    Pausable_unpause,
+    Pausable_when_not_paused
 )
 
 from contracts.Ownable_base import (
@@ -50,7 +50,6 @@ func constructor{
         owner: felt
     ):
     ERC721_initializer(name, symbol)
-    ERC721_Metadata_initializer()
     Ownable_initializer(owner)
     return ()
 end
@@ -64,8 +63,8 @@ func supportsInterface{
         syscall_ptr : felt*,
         pedersen_ptr : HashBuiltin*,
         range_check_ptr
-    }(interfaceId: felt) -> (success: felt):
-    let (success) = ERC165_supports_interface(interfaceId)
+    }(interface_id: felt) -> (success: felt):
+    let (success) = ERC165_supports_interface(interface_id)
     return (success)
 end
 
@@ -114,8 +113,8 @@ func getApproved{
         syscall_ptr : felt*, 
         pedersen_ptr : HashBuiltin*,
         range_check_ptr
-    }(tokenId: Uint256) -> (approved: felt):
-    let (approved: felt) = ERC721_getApproved(tokenId)
+    }(token_id: Uint256) -> (approved: felt):
+    let (approved: felt) = ERC721_getApproved(token_id)
     return (approved)
 end
 
@@ -124,19 +123,19 @@ func isApprovedForAll{
         syscall_ptr : felt*, 
         pedersen_ptr : HashBuiltin*,
         range_check_ptr
-    }(owner: felt, operator: felt) -> (isApproved: felt):
-    let (isApproved: felt) = ERC721_isApprovedForAll(owner, operator)
-    return (isApproved)
+    }(owner: felt, operator: felt) -> (is_approved: felt):
+    let (is_approved: felt) = ERC721_isApprovedForAll(owner, operator)
+    return (is_approved)
 end
 
 @view
-func tokenURI{
-        syscall_ptr: felt*, 
-        pedersen_ptr: HashBuiltin*, 
+func paused{
+        syscall_ptr: felt*,
+        pedersen_ptr: HashBuiltin*,
         range_check_ptr
-    }(tokenId: Uint256) -> (tokenURI: felt):
-    let (tokenURI: felt) = ERC721_Metadata_tokenURI(tokenId)
-    return (tokenURI)
+    }() -> (paused: felt):
+    let (paused) = Pausable_paused.read()
+    return (paused)
 end
 
 
@@ -149,8 +148,9 @@ func approve{
         pedersen_ptr: HashBuiltin*, 
         syscall_ptr: felt*, 
         range_check_ptr
-    }(to: felt, tokenId: Uint256):
-    ERC721_approve(to, tokenId)
+    }(to: felt, token_id: Uint256):
+    Pausable_when_not_paused()
+    ERC721_approve(to, token_id)
     return ()
 end
 
@@ -160,6 +160,7 @@ func setApprovalForAll{
         pedersen_ptr: HashBuiltin*, 
         range_check_ptr
     }(operator: felt, approved: felt):
+    Pausable_when_not_paused()
     ERC721_setApprovalForAll(operator, approved)
     return ()
 end
@@ -172,9 +173,10 @@ func transferFrom{
     }(
         _from: felt, 
         to: felt, 
-        tokenId: Uint256
+        token_id: Uint256
     ):
-    ERC721_transferFrom(_from, to, tokenId)
+    Pausable_when_not_paused()
+    ERC721_transferFrom(_from, to, token_id)
     return ()
 end
 
@@ -186,22 +188,12 @@ func safeTransferFrom{
     }(
         _from: felt, 
         to: felt, 
-        tokenId: Uint256,
+        token_id: Uint256,
         data_len: felt, 
         data: felt*
     ):
-    ERC721_safeTransferFrom(_from, to, tokenId, data_len, data)
-    return ()
-end
-
-@external
-func setTokenURI{
-        pedersen_ptr: HashBuiltin*, 
-        syscall_ptr: felt*, 
-        range_check_ptr
-    }(tokenId: Uint256, tokenURI: felt):
-    Ownable_only_owner()
-    ERC721_Metadata_setTokenURI(tokenId, tokenURI)
+    Pausable_when_not_paused()
+    ERC721_safeTransferFrom(_from, to, token_id, data_len, data)
     return ()
 end
 
@@ -210,19 +202,31 @@ func mint{
         pedersen_ptr: HashBuiltin*, 
         syscall_ptr: felt*, 
         range_check_ptr
-    }(to: felt, tokenId: Uint256):
+    }(to: felt, token_id: Uint256):
+    Pausable_when_not_paused()
     Ownable_only_owner()
-    ERC721_mint(to, tokenId)
+    ERC721_mint(to, token_id)
     return ()
 end
 
 @external
-func burn{
-        pedersen_ptr: HashBuiltin*, 
-        syscall_ptr: felt*, 
+func pause{
+        syscall_ptr: felt*,
+        pedersen_ptr: HashBuiltin*,
         range_check_ptr
-    }(tokenId: Uint256):
+    }():
     Ownable_only_owner()
-    ERC721_burn(tokenId)
+    Pausable_pause()
+    return ()
+end
+
+@external
+func unpause{
+        syscall_ptr: felt*,
+        pedersen_ptr: HashBuiltin*,
+        range_check_ptr
+    }():
+    Ownable_only_owner()
+    Pausable_unpause()
     return ()
 end

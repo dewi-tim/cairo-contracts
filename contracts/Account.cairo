@@ -1,5 +1,4 @@
 %lang starknet
-%builtins pedersen range_check ecdsa
 
 from starkware.cairo.common.registers import get_fp_and_pc
 from starkware.starknet.common.syscalls import get_contract_address
@@ -73,6 +72,15 @@ func get_nonce{
     }() -> (res: felt):
     let (res) = current_nonce.read()
     return (res=res)
+end
+
+@view
+func is_account{
+        syscall_ptr : felt*, 
+        pedersen_ptr : HashBuiltin*,
+        range_check_ptr
+    }() -> (res: felt):
+    return (1)
 end
 
 #

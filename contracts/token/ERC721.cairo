@@ -1,12 +1,11 @@
 %lang starknet
-%builtins pedersen range_check ecdsa
 
 from starkware.cairo.common.cairo_builtins import HashBuiltin, SignatureBuiltin
 from starkware.cairo.common.uint256 import Uint256 
 
 from contracts.token.ERC721_base import (
-    ERC721_name_,
-    ERC721_symbol_,
+    ERC721_name,
+    ERC721_symbol,
     ERC721_balanceOf,
     ERC721_ownerOf,
     ERC721_getApproved,
@@ -19,7 +18,13 @@ from contracts.token.ERC721_base import (
     ERC721_safeTransferFrom
 )
 
-from contracts.ERC165 import (
+from contracts.token.ERC721_Metadata_base import (
+    ERC721_Metadata_initializer,
+    ERC721_Metadata_tokenURI,
+    ERC721_Metadata_setTokenURI,
+)
+
+from contracts.ERC165_base import (
     ERC165_supports_interface
 )
 
@@ -34,6 +39,7 @@ func constructor{
         range_check_ptr
     }(name: felt, symbol: felt):
     ERC721_initializer(name, symbol)
+    ERC721_Metadata_initializer()
     return ()
 end
 
@@ -57,7 +63,7 @@ func name{
         pedersen_ptr : HashBuiltin*,
         range_check_ptr
     }() -> (name: felt):
-    let (name) = ERC721_name_()
+    let (name) = ERC721_name()
     return (name)
 end
 
@@ -67,7 +73,7 @@ func symbol{
         pedersen_ptr : HashBuiltin*,
         range_check_ptr
     }() -> (symbol: felt):
-    let (symbol) = ERC721_symbol_()
+    let (symbol) = ERC721_symbol()
     return (symbol)
 end
 
@@ -109,6 +115,16 @@ func isApprovedForAll{
     }(owner: felt, operator: felt) -> (is_approved: felt):
     let (is_approved: felt) = ERC721_isApprovedForAll(owner, operator)
     return (is_approved)
+end
+
+@view
+func tokenURI{
+        syscall_ptr: felt*, 
+        pedersen_ptr: HashBuiltin*, 
+        range_check_ptr
+    }(token_id: Uint256) -> (token_uri: felt):
+    let (token_uri: felt) = ERC721_Metadata_tokenURI(token_id)
+    return (token_uri)
 end
 
 #
@@ -158,5 +174,15 @@ func safeTransferFrom{
         data: felt*
     ):
     ERC721_safeTransferFrom(_from, to, token_id, data_len, data)
+    return ()
+end
+
+@external
+func setTokenURI{
+        pedersen_ptr: HashBuiltin*, 
+        syscall_ptr: felt*, 
+        range_check_ptr
+    }(token_id: Uint256, token_uri: felt):
+    ERC721_Metadata_setTokenURI(token_id, token_uri)
     return ()
 end
