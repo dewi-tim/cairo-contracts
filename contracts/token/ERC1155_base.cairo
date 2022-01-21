@@ -9,7 +9,8 @@ from starkware.cairo.common.uint256 import (
     Uint256, uint256_add, uint256_sub, uint256_le, uint256_lt, uint256_check)
 
 
-# Notes: does not implement "data" arguments or do(Batch)SafeTransferAcceptanceCheck until account contracts can be distinguished and hook overriding resolved
+# Notes: does not implement "data" arguments or do(Batch)SafeTransferAcceptanceCheck until account contracts can be distinguished and hook overriding resolve
+# TODO make sure all uint inputs are checked
 const IERC1155_interface_id = 0xd9b67a26
 const IERC1155_MetadataURI_interface_id = 0x0e89341c
 const IERC165_interface_id = 0x01ffc9a7
@@ -210,6 +211,9 @@ func ERC1155_mint{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_
         to : felt, id : Uint256, amount : Uint256):
     # Cannot mint to zero address
     assert_not_zero(to)
+    # Check uints valid
+    uint256_check(id)
+    uint256_check(amount)
     # beforeTokenTransfer
     # add to minter check for overflow
     let (to_balance : Uint256) = _balances.read(id=id, account=to)
@@ -262,6 +266,7 @@ end
 func ERC1155_burn_batch{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
         _from : felt, ids_low_len : felt, ids_low : felt*, ids_high_len : felt, ids_high : felt*,
         amounts_low_len : felt, amounts_low : felt*, amounts_high_len : felt, amounts_high : felt*):
+    assert_not_zero(_from)
     # Check args are equal length arrays
     assert ids_high_len = ids_low_len
     assert amounts_high_len = amounts_low_len
