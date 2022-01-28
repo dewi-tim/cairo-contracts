@@ -8,6 +8,9 @@ from utils import Signer
 signer = Signer(123456789987654321)
 other = Signer(987654321123456789)
 
+IACCOUNT_ID = 0x50b70dcb
+TRUE = 1
+
 
 @pytest.fixture(scope='module')
 def event_loop():
@@ -31,6 +34,9 @@ async def test_constructor(account_factory):
 
     execution_info = await account.get_public_key().call()
     assert execution_info.result == (signer.public_key,)
+
+    execution_info = await account.supportsInterface(IACCOUNT_ID).call()
+    assert execution_info.result == (TRUE,)
 
 
 @pytest.mark.asyncio
