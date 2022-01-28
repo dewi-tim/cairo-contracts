@@ -10,8 +10,13 @@ MAX_UINT256 = (2**128 - 1, 2**128 - 1)
 
 
 def str_to_felt(text):
-    b_text = bytes(text, 'UTF-8')
+    b_text = bytes(text, 'ascii')
     return int.from_bytes(b_text, "big")
+
+
+def felt_to_str(felt):
+    b_felt = felt.to_bytes(31, "big")
+    return b_felt.decode()
 
 
 def uint(a):
@@ -25,6 +30,32 @@ def uarr2cd(arr):
     for hi,lo in arr:
         acc += [hi,lo]
     return acc
+
+def to_uint(a):
+    """Takes in value, returns uint256-ish tuple."""
+    return (a & ((1 << 128) - 1), a >> 128)
+
+
+def from_uint(uint):
+    """Takes in uint256-ish tuple, returns value."""
+    return uint[0] + (uint[1] << 128)
+
+
+def add_uint(a, b):
+    """Returns the sum of two uint256-ish tuples."""
+    a = from_uint(a)
+    b = from_uint(b)
+    c = a + b
+    return to_uint(c)
+
+
+def sub_uint(a, b):
+    """Returns the difference of two uint256-ish tuples."""
+    a = from_uint(a)
+    b = from_uint(b)
+    c = a - b
+    return to_uint(c)
+
 
 async def assert_revert(fun):
     try:
