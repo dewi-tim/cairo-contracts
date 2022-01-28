@@ -4,9 +4,8 @@ from starkware.starknet.common.syscalls import get_caller_address
 from starkware.cairo.common.cairo_builtins import HashBuiltin, SignatureBuiltin
 from starkware.cairo.common.math import assert_not_zero, assert_not_equal
 from starkware.cairo.common.alloc import alloc
-from starkware.cairo.common.registers import get_fp_and_pc
 from starkware.cairo.common.uint256 import (
-    Uint256, uint256_add, uint256_sub, uint256_le, uint256_lt, uint256_check)
+    Uint256, uint256_add, uint256_sub, uint256_le, uint256_check)
 
 
 # Notes: does not implement "data" arguments or do(Batch)SafeTransferAcceptanceCheck until account contracts can be distinguished and hook overriding resolve
@@ -14,6 +13,35 @@ from starkware.cairo.common.uint256 import (
 const IERC1155_interface_id = 0xd9b67a26
 const IERC1155_MetadataURI_interface_id = 0x0e89341c
 const IERC165_interface_id = 0x01ffc9a7
+
+
+#
+# Events
+#
+
+@event
+func TransferSingle(
+        operator : felt, from_ : felt, to : felt, id : Uint256, value : Uint256):
+end
+
+@event
+func TransferBatch(
+        operator : felt, from_ : felt, to : felt, 
+        ids_len : felt, ids : Uint256*, 
+        values_len : felt, values : Uint256*):
+end
+
+@event
+func ApprovalForAll(
+        account : felt, operator : felt, approved : felt):
+end
+
+@event
+func URI(
+        value_len : felt, value : felt*, id : Uint256):
+end
+
+
 #
 # Storage
 #
@@ -74,35 +102,25 @@ end
 
 
 func ERC1155_balance_of_batch{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-        accounts_len : felt, accounts : felt*, ids_low_len : felt, ids_low : felt*,
-        ids_high_len : felt, ids_high : felt*) -> (
-        batch_balances_low_len : felt, batch_balances_low : felt*, batch_balances_high_len : felt,
-        batch_balances_high : felt*):
+        accounts_len : felt, accounts : felt*, ids_len : felt, ids : Uint256*) -> (
+        batch_balances_len : felt, batch_balances : Uint256*):
     alloc_locals
     # Check args are equal length arrays
-    assert ids_high_len = ids_low_len
-    assert ids_high_len = accounts_len
+    assert ids_len = accounts_len
     # Allocate memory
-    let (local batch_balances_low : felt*) = alloc()
-    let (local batch_balances_high : felt*) = alloc()
-    let batch_balances_low_len = accounts_len
-    let batch_balances_high_len = accounts_len
+    let (local batch_balances : Uint256*) = alloc()
+    let batch_balances_len = accounts_len
     # Call iterator
     balance_of_batch_iter(
         accounts_len,
         accounts,
-        ids_low_len,
-        ids_low,
-        ids_high_len,
-        ids_high,
-        batch_balances_low_len,
-        batch_balances_low,
-        batch_balances_high_len,
-        batch_balances_high)
-    let batch_balances_low_len = accounts_len
-    let batch_balances_high_len = accounts_len
+        ids_len,
+        ids,
+        batch_balances_len,
+        batch_balances)
+    let batch_balances_len = accounts_len
     return (
-        batch_balances_low_len, batch_balances_low, batch_balances_high_len, batch_balances_high)
+        batch_balances_len, batch_balances)
 end
 
 
@@ -134,22 +152,15 @@ end
 
 
 func ERC1155_safe_batch_transfer_from{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-        _from : felt, to : felt, ids_low_len : felt, ids_low : felt*, ids_high_len : felt,
-        ids_high : felt*, amounts_low_len : felt, amounts_low : felt*, amounts_high_len : felt,
-        amounts_high : felt*):
+        _from : felt, to : felt, ids_len : felt, ids : Uint256*, amounts_len : felt, amounts : Uint256*):
     owner_or_approved(_from)
-    _safe_batch_transfer_from(
+    return _safe_batch_transfer_from(
         _from,
         to,
-        ids_low_len,
-        ids_low,
-        ids_high_len,
-        ids_high,
-        amounts_low_len,
-        amounts_low,
-        amounts_high_len,
-        amounts_high)
-    return ()
+        ids_len,
+        ids,
+        amounts_len,
+        amounts)
 end
 
 #
@@ -179,32 +190,31 @@ func _safe_transfer_from{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range
     let (new_balance : Uint256, carry) = uint256_add(to_balance, amount)
     assert carry = 0
     _balances.write(id=id, account=to, value=new_balance)
+    let (operator) = get_caller_address()
+    TransferSingle.emit(operator,_from,to,id,amount)
     # Todo: doSafeTransferAcceptanceCheck
     return ()
 end
 
 func _safe_batch_transfer_from{
-syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-        _from : felt, to : felt, ids_low_len : felt, ids_low : felt*, ids_high_len : felt,
-        ids_high : felt*, amounts_low_len : felt, amounts_low : felt*, amounts_high_len : felt,
-        amounts_high : felt*):   
+        syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
+        _from : felt, to : felt, ids_len : felt, ids : Uint256*,
+        amounts_len : felt, amounts : Uint256*):   
+    alloc_locals
     assert_not_zero(to)
     # Check args are equal length arrays
-    assert ids_high_len = ids_low_len
-    assert amounts_high_len = amounts_low_len
-    assert ids_high_len = amounts_high_len
+    assert ids_len = amounts_len
     # Recursive call
-    return safe_batch_transfer_from_iter(
+    safe_batch_transfer_from_iter(
         _from=_from,
         to=to,
-        ids_low_len=ids_low_len,
-        ids_low=ids_low,
-        ids_high_len=ids_high_len,
-        ids_high=ids_high,
-        amounts_low_len=amounts_low_len,
-        amounts_low=amounts_low,
-        amounts_high_len=amounts_high_len,
-        amounts_high=amounts_high)
+        ids_len=ids_len,
+        ids=ids,
+        amounts_len=amounts_len,
+        amounts=amounts)
+    let (operator) = get_caller_address()
+    TransferBatch.emit(operator,_from,to,ids_len,ids,amounts_len,amounts)
+    return ()
 end
 
 func ERC1155_mint{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
@@ -221,29 +231,43 @@ func ERC1155_mint{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_
     assert carry = 0
     _balances.write(id=id, account=to, value=new_balance)
     # doSafeTransferAcceptanceCheck
+    let (operator) = get_caller_address()
+    TransferSingle.emit(
+        operator=operator,
+        from_=0,
+        to=to,
+        id=id,
+        value=amount
+    )
     return ()
 end
 
 func ERC1155_mint_batch{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-        to : felt, ids_low_len : felt, ids_low : felt*, ids_high_len : felt, ids_high : felt*,
-        amounts_low_len : felt, amounts_low : felt*, amounts_high_len : felt, amounts_high : felt*):
+        to : felt, ids_len : felt, ids : Uint256*, 
+        amounts_len : felt, amounts : Uint256*):
+    alloc_locals
     # Cannot mint to zero address
     assert_not_zero(to)
     # Check args are equal length arrays
-    assert ids_high_len = ids_low_len
-    assert amounts_high_len = amounts_low_len
-    assert ids_high_len = amounts_high_len
+    assert ids_len = amounts_len
     # Recursive call
-    return mint_batch_iter(
+    mint_batch_iter(
         to=to,
-        ids_low_len=ids_low_len,
-        ids_low=ids_low,
-        ids_high_len=ids_high_len,
-        ids_high=ids_high,
-        amounts_low_len=amounts_low_len,
-        amounts_low=amounts_low,
-        amounts_high_len=amounts_high_len,
-        amounts_high=amounts_high)
+        ids_len=ids_len,
+        ids=ids,
+        amounts_len=amounts_len,
+        amounts=amounts)
+    let (operator) = get_caller_address()
+    TransferBatch.emit(
+        operator=operator,
+        from_=0,
+        to=to,
+        ids_len=ids_len,
+        ids=ids,
+        values_len=amounts_len,
+        values=amounts
+    )
+    return ()
 end
 
 func ERC1155_burn{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
@@ -259,29 +283,42 @@ func ERC1155_burn{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_
     # Deduct from burner
     let (new_balance : Uint256) = uint256_sub(from_balance, amount)
     _balances.write(id=id, account=_from, value=new_balance)
-    # doSafeTransferAcceptanceCheck
+    let (operator) = get_caller_address()
+    TransferSingle.emit(
+        operator=operator,
+        from_=_from,
+        to=0,
+        id=id,
+        value=amount
+    )
     return ()
 end
 
 func ERC1155_burn_batch{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-        _from : felt, ids_low_len : felt, ids_low : felt*, ids_high_len : felt, ids_high : felt*,
-        amounts_low_len : felt, amounts_low : felt*, amounts_high_len : felt, amounts_high : felt*):
+        _from : felt, ids_len : felt, ids : Uint256*,
+        amounts_len : felt, amounts : Uint256*):
+    alloc_locals
     assert_not_zero(_from)
     # Check args are equal length arrays
-    assert ids_high_len = ids_low_len
-    assert amounts_high_len = amounts_low_len
-    assert ids_high_len = amounts_high_len
+    assert ids_len = amounts_len
     # Recursive call
-    return burn_batch_iter(
+    burn_batch_iter(
         _from=_from,
-        ids_low_len=ids_low_len,
-        ids_low=ids_low,
-        ids_high_len=ids_high_len,
-        ids_high=ids_high,
-        amounts_low_len=amounts_low_len,
-        amounts_low=amounts_low,
-        amounts_high_len=amounts_high_len,
-        amounts_high=amounts_high)
+        ids_len=ids_len,
+        ids=ids,
+        amounts_len=amounts_len,
+        amounts=amounts)
+    let (operator) = get_caller_address()
+    TransferBatch.emit(
+        operator=operator,
+        from_=_from,
+        to=0,
+        ids_len=ids_len,
+        ids=ids,
+        values_len=amounts_len,
+        values=amounts
+    )
+    return ()
 end
 
 func _set_approval_for_all{
@@ -289,9 +326,11 @@ func _set_approval_for_all{
         owner : felt, operator : felt, approved : felt):
     # check approved is bool
     assert (approved - 0) * (approved - 1) = 0
-
+    # since caller can now be 0
+    assert_not_zero(owner*operator)
     assert_not_equal(owner, operator)
     _operator_approvals.write(owner, operator, approved)
+    ApprovalForAll.emit(owner,operator,approved)
     return ()
 end
 
@@ -307,49 +346,41 @@ end
 #
 
 func balance_of_batch_iter{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-        accounts_len : felt, accounts : felt*, ids_low_len : felt, ids_low : felt*,
-        ids_high_len : felt, ids_high : felt*, batch_balances_low_len : felt,
-        batch_balances_low : felt*, batch_balances_high_len : felt, batch_balances_high : felt*):
-    alloc_locals
-    if ids_high_len == 0:
+        accounts_len : felt, accounts : felt*, ids_len : felt, ids : Uint256*,
+        batch_balances_len : felt, batch_balances : Uint256*):  
+    if ids_len == 0:
         return ()
     end
-    let (local __fp__, _) = get_fp_and_pc()
+    # may be unnecessary now
     # Read current entries, Todo: perform Uint256 checks
-    local id : Uint256 = Uint256([ids_low], [ids_high])
-    let account : felt = [accounts]
+    let id : Uint256 = [ids]
     uint256_check(id)
+    let account : felt = [accounts]
+    
     let (balance : Uint256) = ERC1155_balance_of(account,id)
-    assert [batch_balances_low] = balance.low
-    assert [batch_balances_high] = balance.high
-   return  balance_of_batch_iter(
+    assert [batch_balances] = balance
+    return  balance_of_batch_iter(
         accounts_len - 1,
         accounts + 1,
-        ids_low_len - 1,
-        ids_low + 1,
-        ids_high_len - 1,
-        ids_high + 1,
-        batch_balances_low_len - 1,
-        batch_balances_low + 1,
-        batch_balances_high_len - 1,
-        batch_balances_high + 1)
+        ids_len - 1,
+        ids + Uint256.SIZE,
+        batch_balances_len - 1,
+        batch_balances + Uint256.SIZE
+    )
 end
 
 func safe_batch_transfer_from_iter{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-        _from : felt, to : felt, ids_low_len : felt, ids_low : felt*, ids_high_len : felt,
-        ids_high : felt*, amounts_low_len : felt, amounts_low : felt*, amounts_high_len : felt,
-        amounts_high : felt*):
+        _from : felt, to : felt, ids_len : felt, ids : Uint256*, amounts_len : felt, amounts : Uint256*):
     # Base case
     alloc_locals
-    if ids_high_len == 0:
+    if ids_len == 0:
         return ()
     end
-    let (local __fp__, _) = get_fp_and_pc()
 
-    # Read current entries, Todo: perform Uint256 checks
-    local id : Uint256 = Uint256([ids_low], [ids_high])
+    # Read current entries,  perform Uint256 checks
+    let id = [ids]
     uint256_check(id)
-    local amount : Uint256 = Uint256([amounts_low], [amounts_high])
+    let amount = [amounts]
     uint256_check(amount)
 
     # Check balance is sufficient
@@ -371,31 +402,24 @@ func safe_batch_transfer_from_iter{syscall_ptr : felt*, pedersen_ptr : HashBuilt
     return safe_batch_transfer_from_iter(
         _from=_from,
         to=to,
-        ids_low_len=ids_low_len - 1,
-        ids_low=ids_low + 1,
-        ids_high_len=ids_high_len - 1,
-        ids_high=ids_high + 1,
-        amounts_low_len=amounts_low_len - 1,
-        amounts_low=amounts_low + 1,
-        amounts_high_len=amounts_high_len - 1,
-        amounts_high=amounts_high + 1)
+        ids_len=ids_len - 1,
+        ids=ids + Uint256.SIZE,
+        amounts_len=amounts_len - 1,
+        amounts=amounts + Uint256.SIZE)
 end
 
 func mint_batch_iter{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-        to : felt, ids_low_len : felt, ids_low : felt*, ids_high_len : felt,
-        ids_high : felt*, amounts_low_len : felt, amounts_low : felt*, amounts_high_len : felt,
-        amounts_high : felt*):
+        to : felt, ids_len : felt, ids : Uint256*, amounts_len : felt, amounts : Uint256*):
     # Base case
     alloc_locals
-    if ids_high_len == 0:
+    if ids_len == 0:
         return ()
     end
-    let (local __fp__, _) = get_fp_and_pc()
 
     # Read current entries, Todo: perform Uint256 checks
-    local id : Uint256 = Uint256([ids_low], [ids_high])
+    let id : Uint256 = [ids]
     uint256_check(id)
-    local amount : Uint256 = Uint256([amounts_low], [amounts_high])
+    let amount : Uint256 = [amounts]
     uint256_check(amount)
 
     # add to
@@ -407,31 +431,24 @@ func mint_batch_iter{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_che
     # Recursive call
     return mint_batch_iter(
         to=to,
-        ids_low_len=ids_low_len - 1,
-        ids_low=ids_low + 1,
-        ids_high_len=ids_high_len - 1,
-        ids_high=ids_high + 1,
-        amounts_low_len=amounts_low_len - 1,
-        amounts_low=amounts_low + 1,
-        amounts_high_len=amounts_high_len - 1,
-        amounts_high=amounts_high + 1)
+        ids_len=ids_len - 1,
+        ids=ids + Uint256.SIZE,
+        amounts_len=amounts_len - 1,
+        amounts=amounts + Uint256.SIZE)
 end
 
 func burn_batch_iter{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-        _from : felt, ids_low_len : felt, ids_low : felt*, ids_high_len : felt,
-        ids_high : felt*, amounts_low_len : felt, amounts_low : felt*, amounts_high_len : felt,
-        amounts_high : felt*):
+        _from : felt, ids_len : felt, ids : Uint256*,  amounts_len : felt, amounts : Uint256*):
     # Base case
     alloc_locals
-    if ids_high_len == 0:
+    if ids_len == 0:
         return ()
     end
-    let (local __fp__, _) = get_fp_and_pc()
 
     # Read current entries, Todo: perform Uint256 checks
-    local id : Uint256 = Uint256([ids_low], [ids_high])
+    let id : Uint256 = [ids]
     uint256_check(id)
-    local amount : Uint256 = Uint256([amounts_low], [amounts_high])
+    let amount : Uint256 = [amounts]
     uint256_check(amount)
 
     # Check balance is sufficient
@@ -446,14 +463,10 @@ func burn_batch_iter{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_che
     # Recursive call
     return burn_batch_iter(
         _from=_from,
-        ids_low_len=ids_low_len - 1,
-        ids_low=ids_low + 1,
-        ids_high_len=ids_high_len - 1,
-        ids_high=ids_high + 1,
-        amounts_low_len=amounts_low_len - 1,
-        amounts_low=amounts_low + 1,
-        amounts_high_len=amounts_high_len - 1,
-        amounts_high=amounts_high + 1)
+        ids_len=ids_len - 1,
+        ids=ids + Uint256.SIZE,
+        amounts_len=amounts_len - 1,
+        amounts=amounts + Uint256.SIZE)
 end
 
 func owner_or_approved{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(owner):

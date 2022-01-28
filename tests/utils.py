@@ -17,10 +17,14 @@ def str_to_felt(text):
 def uint(a):
     return(a, 0)
 
-def uint_array(lo,hi=None):
-    if hi is None:
-        hi = [0]*len(lo)
-    return (len(lo),*lo,len(hi),*hi)
+def uint_array(arr):
+    return list(map(uint,arr))
+
+def uarr2cd(arr):
+    acc = [len(arr)]
+    for hi,lo in arr:
+        acc += [hi,lo]
+    return acc
 
 async def assert_revert(fun):
     try:
