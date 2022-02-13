@@ -1,5 +1,6 @@
 """Utilities for testing Cairo contracts."""
 
+import re
 from starkware.cairo.common.hash_state import compute_hash_on_elements
 from starkware.crypto.signature.signature import private_to_stark_key, sign
 from starkware.starknet.definitions.error_codes import StarknetErrorCode
@@ -7,7 +8,7 @@ from starkware.starkware_utils.error_handling import StarkException
 from starkware.starknet.public.abi import get_selector_from_name
 
 MAX_UINT256 = (2**128 - 1, 2**128 - 1)
-
+extract_errors = re.compile('(?<=Error message: ).*(?=\n)')
 
 def str_to_felt(text):
     b_text = bytes(text, 'ascii')
@@ -57,14 +58,23 @@ def sub_uint(a, b):
     return to_uint(c)
 
 
-async def assert_revert(fun):
+async def assert_revert(fun,with_errors=None,mode='all'):
+    expected = with_errors
     try:
         await fun
         assert False
     except StarkException as err:
         _, error = err.args
         assert error['code'] == StarknetErrorCode.TRANSACTION_FAILED
-
+        if expected is not None:
+            errors = extract_errors.findall(error['message']) 
+            print(errors)
+            if mode == 'exactly':
+                assert set(errors) == set(expected)
+            if mode == 'all':
+                assert set(errors)&set(expected) == set(expected)
+            if mode == 'some':
+                assert set(errors)&set(expected) != set()
 
 class Signer():
     """
