@@ -161,10 +161,6 @@ end
 
 func ERC1155_safe_batch_transfer_from{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
         _from : felt, to : felt, ids_len : felt, ids : Uint256*, amounts_len : felt, amounts : Uint256*):
-    let (caller) = get_caller_address()
-    with_attr error_message("ERC1155: called from zero address"):
-        assert_not_zero(caller)
-    end
     with_attr error_message("ERC1155: transfer caller is not owner nor approved"):
         owner_or_approved(_from)
     end
@@ -244,10 +240,7 @@ end
 
 func ERC1155_mint{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
         to : felt, id : Uint256, amount : Uint256):
-        let (caller) = get_caller_address()
-    with_attr error_message("ERC1155: called from zero address"):
-        assert_not_zero(caller)
-    end
+    
     # Cannot mint to zero address
     with_attr error_message("ERC1155: mint to the zero address"):
         assert_not_zero(to)
@@ -281,10 +274,6 @@ func ERC1155_mint_batch{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_
         to : felt, ids_len : felt, ids : Uint256*, 
         amounts_len : felt, amounts : Uint256*):
     alloc_locals
-    let (caller) = get_caller_address()
-    with_attr error_message("ERC1155: called from zero address"):
-        assert_not_zero(caller)
-    end
     # Cannot mint to zero address
     with_attr error_message("ERC1155: mint to the zero address"):
         assert_not_zero(to)
@@ -316,10 +305,6 @@ end
 func ERC1155_burn{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
         _from : felt, id : Uint256, amount : Uint256):
     alloc_locals
-    let (caller) = get_caller_address()
-    with_attr error_message("ERC1155: called from zero address"):
-        assert_not_zero(caller)
-    end
     with_attr error_message("ERC1155: burn from the zero address"):
         assert_not_zero(_from)
     end
@@ -348,10 +333,6 @@ func ERC1155_burn_batch{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_
         _from : felt, ids_len : felt, ids : Uint256*,
         amounts_len : felt, amounts : Uint256*):
     alloc_locals
-    let (caller) = get_caller_address()
-    with_attr error_message("ERC1155: called from zero address"):
-        assert_not_zero(caller)
-    end
     with_attr error_message("ERC1155: burn from the zero address"):
         assert_not_zero(_from)
     end
