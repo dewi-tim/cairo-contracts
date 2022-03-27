@@ -1,5 +1,6 @@
 """Utilities for testing Cairo contracts."""
 
+from pathlib import Path
 import math
 from starkware.cairo.common.hash_state import compute_hash_on_elements
 from starkware.crypto.signature.signature import private_to_stark_key, sign
@@ -8,7 +9,8 @@ from starkware.starknet.compiler.compile import compile_starknet_files
 from starkware.starkware_utils.error_handling import StarkException
 from starkware.starknet.testing.starknet import StarknetContract
 from starkware.starknet.business_logic.transaction_execution_objects import Event
-
+from starkware.starknet.core.os.transaction_hash import calculate_transaction_hash_common, TransactionHashPrefix
+from starkware.starknet.definitions.general_config import StarknetChainId
 
 MAX_UINT256 = (2**128 - 1, 2**128 - 1)
 INVALID_UINT256 = (MAX_UINT256[0] + 1, MAX_UINT256[1])
@@ -19,6 +21,16 @@ FALSE = 0
 TRANSACTION_VERSION = 0
 
 
+_root = Path(__file__).parent.parent
+
+
+def contract_path(name):
+    if name.startswith("tests/"):
+        return str(_root / name)
+    else:
+        return str(_root / "src" / name)
+
+
 def str_to_felt(text):
     b_text = bytes(text, "ascii")
     return int.from_bytes(b_text, "big")
@@ -27,14 +39,6 @@ def str_to_felt(text):
 def felt_to_str(felt):
     b_felt = felt.to_bytes(31, "big")
     return b_felt.decode()
-
-
-def assert_event_emitted(tx_exec_info, from_address, name, data):
-    assert Event(
-        from_address=from_address,
-        keys=[get_selector_from_name(name)],
-        data=data,
-    ) in tx_exec_info.raw_events
 
 
 def uint(a):
@@ -104,6 +108,7 @@ def assert_event_emitted(tx_exec_info, from_address, name, data):
 
 def get_contract_def(path):
     """Returns the contract definition from the contract path"""
+    path = contract_path(path)
     contract_def = compile_starknet_files(
         files=[path],
         debug_info=True
@@ -166,8 +171,7 @@ class Signer():
             (call[0], get_selector_from_name(call[1]), call[2]) for call in calls]
         (call_array, calldata) = from_call_to_call_array(calls)
 
-        message_hash = hash_multicall(
-            account.contract_address, calls_with_selector, nonce, max_fee)
+        message_hash = get_transaction_hash(account.contract_address, call_array, calldata, nonce, max_fee)
         sig_r, sig_s = self.sign(message_hash)
 
         return await account.__execute__(call_array, calldata, nonce).invoke(signature=[sig_r, sig_s])
@@ -184,19 +188,21 @@ def from_call_to_call_array(calls):
         calldata.extend(call[2])
     return (call_array, calldata)
 
+def get_transaction_hash(account, call_array, calldata, nonce, max_fee):
+    execute_calldata = [
+        len(call_array),
+        *[x for t in call_array for x in t],
+        len(calldata),
+        *calldata,
+        nonce]
 
-def hash_multicall(sender, calls, nonce, max_fee):
-    hash_array = []
-    for call in calls:
-        call_elements = [call[0], call[1], compute_hash_on_elements(call[2])]
-        hash_array.append(compute_hash_on_elements(call_elements))
-
-    message = [
-        str_to_felt('StarkNet Transaction'),
-        sender,
-        compute_hash_on_elements(hash_array),
-        nonce,
+    return calculate_transaction_hash_common(
+        TransactionHashPrefix.INVOKE,
+        TRANSACTION_VERSION,
+        account,
+        get_selector_from_name('__execute__'),
+        execute_calldata,
         max_fee,
-        TRANSACTION_VERSION
-    ]
-    return compute_hash_on_elements(message)
+        StarknetChainId.TESTNET.value,
+        []
+    )

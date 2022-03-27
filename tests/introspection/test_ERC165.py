@@ -1,22 +1,20 @@
 import pytest
-import asyncio
 from starkware.starknet.testing.starknet import Starknet
-from utils import assert_revert
+from utils import assert_revert, contract_path
 
+
+# interface ids
 ERC165_ID = 0x01ffc9a7
 INVALID_ID = 0xffffffff
 OTHER_ID = 0x12345678
 
 
 @pytest.fixture(scope='module')
-def event_loop():
-    return asyncio.new_event_loop()
-
-
-@pytest.fixture(scope='module')
 async def erc165_factory():
     starknet = await Starknet.empty()
-    contract = await starknet.deploy("tests/mocks/ERC165.cairo")
+    contract = await starknet.deploy(
+        contract_path("tests/mocks/ERC165.cairo")
+    )
     return contract
 
 

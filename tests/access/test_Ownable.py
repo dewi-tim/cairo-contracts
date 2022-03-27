@@ -1,26 +1,21 @@
 import pytest
-import asyncio
 from starkware.starknet.testing.starknet import Starknet
-from utils import Signer
+from utils import Signer, contract_path
+
 
 signer = Signer(123456789987654321)
-
-
-@pytest.fixture(scope='module')
-def event_loop():
-    return asyncio.new_event_loop()
 
 
 @pytest.fixture(scope='module')
 async def ownable_factory():
     starknet = await Starknet.empty()
     owner = await starknet.deploy(
-        "openzeppelin/account/Account.cairo",
+        contract_path("openzeppelin/account/Account.cairo"),
         constructor_calldata=[signer.public_key]
     )
 
     ownable = await starknet.deploy(
-        "tests/mocks/Ownable.cairo",
+        contract_path("tests/mocks/Ownable.cairo"),
         constructor_calldata=[owner.contract_address]
     )
     return starknet, ownable, owner
