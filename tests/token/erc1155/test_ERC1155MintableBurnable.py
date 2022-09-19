@@ -46,6 +46,7 @@ TOKEN_ID = to_uint(111)
 MINT_AMOUNT = to_uint(1000)
 BURN_AMOUNT = to_uint(500)
 TRANSFER_AMOUNT = to_uint(500)
+INVALID_AMOUNT = uint(MAX_UINT256[0]+1)
 
 ACCOUNTS = [123, 234, 345]
 TOKEN_IDS = [TOKEN_ID, to_uint(222), to_uint(333)]
@@ -56,7 +57,7 @@ TRANSFER_AMOUNTS = [TRANSFER_AMOUNT, to_uint(1000), to_uint(1500)]
 TRANSFER_DIFFERENCES = [sub_uint(m, t)
                         for m, t in zip(MINT_AMOUNTS, TRANSFER_AMOUNTS)]
 MAX_UINT_AMOUNTS = [to_uint(1), MAX_UINT256, to_uint(1)]
-INVALID_AMOUNTS = uint_array([1, MAX_UINT256[0]+1, 1])
+INVALID_AMOUNTS = [to_uint(1), INVALID_AMOUNT, to_uint(1)]
 INVALID_IDS = [to_uint(111),INVALID_UINT256,to_uint(333)]
 
 DEFAULT_URI = str_to_felt('mock://mytoken.v1')
@@ -441,8 +442,8 @@ async def test_mint_overflow(erc1155_factory):
     [
         (MINT_AMOUNT, INVALID_UINT256, 
         f"ERC1155: id {INVALID_UINT256} is not a valid Uint256"),
-        (INVALID_UINT256, TOKEN_ID, 
-        "ERC1155: amount is not a valid Uint256")
+        (INVALID_AMOUNT, TOKEN_ID, 
+        f"ERC1155: amount {INVALID_AMOUNT} is not a valid Uint256")
     ]
 )
 async def test_mint_invalid_uint(erc1155_factory, amount, token_id, error):
@@ -620,8 +621,8 @@ async def test_burn_invalid_amount(erc1155_factory):
     await assert_revert(
         signer.send_transaction(
             account, erc1155.contract_address, 'burn',
-            [burner, *TOKEN_ID, *INVALID_UINT256]),
-        "ERC1155: amount is not a valid Uint256")
+            [burner, *TOKEN_ID, *INVALID_AMOUNT]),
+        f"ERC1155: amount {INVALID_AMOUNT} is not a valid Uint256")
 
 
 @pytest.mark.asyncio
@@ -757,8 +758,8 @@ async def test_safe_transfer_from_invalid_amount(erc1155_factory):
     await assert_revert(
         signer.send_transaction(
             account, erc1155.contract_address, 'safeTransferFrom',
-            [sender, recipient, *TOKEN_ID, *INVALID_UINT256, DATA]),
-        "ERC1155: amount is not a valid Uint256"
+            [sender, recipient, *TOKEN_ID, *INVALID_AMOUNT, DATA]),
+        f"ERC1155: amount {INVALID_AMOUNT} is not a valid Uint256"
     )
 
 
@@ -920,7 +921,7 @@ async def test_mint_batch_overflow(erc1155_factory):
     "amounts,token_ids,error",
     [
         (INVALID_AMOUNTS, TOKEN_IDS,
-        "ERC1155: amount is not a valid Uint256"),
+        f"ERC1155: amount {INVALID_AMOUNT} is not a valid Uint256"),
         (MINT_AMOUNTS, INVALID_IDS,
         f"ERC1155: id {INVALID_UINT256} is not a valid Uint256")
     ])
@@ -1157,7 +1158,7 @@ async def test_burn_batch_invalid_amount(erc1155_factory):
         signer.send_transaction(
             account, erc1155.contract_address, 'burnBatch',
             [burner, *calldata(TOKEN_IDS), *calldata(INVALID_AMOUNTS)]),
-        "ERC1155: amount is not a valid Uint256")
+        f"ERC1155: amount {INVALID_AMOUNT} is not a valid Uint256")
 
 
 @pytest.mark.asyncio
@@ -1323,7 +1324,7 @@ async def test_safe_batch_transfer_from_invalid_amount(erc1155_factory):
             sender, recipient, *calldata(TOKEN_IDS),
             *calldata(INVALID_AMOUNTS), DATA
         ]),
-        "ERC1155: amount is not a valid Uint256")
+        f"ERC1155: amount {INVALID_AMOUNT} is not a valid Uint256")
 
 
 @pytest.mark.asyncio

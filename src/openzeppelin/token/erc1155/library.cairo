@@ -7,13 +7,18 @@ from starkware.starknet.common.syscalls import get_caller_address
 from starkware.cairo.common.cairo_builtins import HashBuiltin
 from starkware.cairo.common.math import assert_not_zero, assert_not_equal
 from starkware.cairo.common.alloc import alloc
-from starkware.cairo.common.uint256 import Uint256, uint256_check
+from starkware.cairo.common.uint256 import (
+    Uint256,
+    uint256_check,
+    uint256_add,
+    uint256_sub,
+    uint256_le
+)
 from starkware.cairo.common.bool import TRUE
 
 from openzeppelin.introspection.erc165.IERC165 import IERC165
 from openzeppelin.introspection.erc165.library import ERC165
 from openzeppelin.token.erc1155.IERC1155Receiver import IERC1155Receiver
-from openzeppelin.security.safemath.library import SafeUint256
 from openzeppelin.utils.constants.library import (
     IERC1155_ID,
     IERC1155_METADATA_ID,
@@ -231,16 +236,12 @@ namespace ERC1155:
             assert_not_zero(to)
         end
         check_id(id)
-        with_attr error_message("ERC1155: amount is not a valid Uint256"):
-            uint256_check(amount)
-        end
+        check_amount(amount)
 
         # Deduct from sender
-        let (from_balance: Uint256) = ERC1155_balances.read(id, from_)
         with_attr error_message("ERC1155: insufficient balance for transfer"):
-            let (new_balance: Uint256) = SafeUint256.sub_le(from_balance, amount)
+            deduct_from(id, amount, from_)
         end
-        ERC1155_balances.write(id, from_, new_balance)
 
         # Add to receiver
         add_to_receiver(id, amount, to)
@@ -333,9 +334,7 @@ namespace ERC1155:
         end
         # Check uints validity
         check_id(id)
-        with_attr error_message("ERC1155: amount is not a valid Uint256"):
-            uint256_check(amount)
-        end
+        check_amount(amount)
 
         # add to minter, check for overflow
         add_to_receiver(id, amount, to)
@@ -425,16 +424,12 @@ namespace ERC1155:
 
         # Check uints validity
         check_id(id)
-        with_attr error_message("ERC1155: amount is not a valid Uint256"):
-            uint256_check(amount)
-        end
+        check_amount(amount)
 
         # Deduct from burner
-        let (from_balance: Uint256) = ERC1155_balances.read(id, from_)
         with_attr error_message("ERC1155: burn amount exceeds balance"):
-            let (new_balance: Uint256) = SafeUint256.sub_le(from_balance, amount)
+            deduct_from(id, amount, from_)
         end
-        ERC1155_balances.write(id, from_, new_balance)
 
         let (operator) = get_caller_address()
         TransferSingle.emit(operator=operator, from_=from_, to=0, id=id, value=amount)
@@ -658,16 +653,12 @@ func safe_batch_transfer_from_iter{
     let id = [ids]
     check_id(id)
     let amount = [amounts]
-    with_attr error_message("ERC1155: amount is not a valid Uint256"):
-        uint256_check(amount)
-    end
+    check_amount(amount)
 
     # deduct from sender
-    let (from_balance: Uint256) = ERC1155_balances.read(id, from_)
     with_attr error_message("ERC1155: insufficient balance for transfer"):
-        let (new_balance: Uint256) = SafeUint256.sub_le(from_balance, amount)
+        deduct_from(id, amount, from_)
     end
-    ERC1155_balances.write(id, from_, new_balance)
 
     add_to_receiver(id, amount, to)
 
@@ -697,9 +688,7 @@ func mint_batch_iter{
     let id: Uint256 = [ids]
     check_id(id)
     let amount: Uint256 = [amounts]
-    with_attr error_message("ERC1155: amount is not a valid Uint256"):
-        uint256_check(amount)
-    end
+    check_amount(amount)
 
     add_to_receiver(id, amount, to)
 
@@ -727,16 +716,12 @@ func burn_batch_iter{
     let id: Uint256 = [ids]
     check_id(id)
     let amount: Uint256 = [amounts]
-    with_attr error_message("ERC1155: amount is not a valid Uint256"):
-        uint256_check(amount)
-    end
+    check_amount(amount)
 
     # Deduct from burner
-    let (from_balance: Uint256) = ERC1155_balances.read(id, from_)
     with_attr error_message("ERC1155: burn amount exceeds balance"):
-        let (new_balance: Uint256) = SafeUint256.sub_le(from_balance, amount)
+        deduct_from(id, amount, from_)
     end
-    ERC1155_balances.write(id, from_, new_balance)
 
     # Recursive call
     return burn_batch_iter(from_, len - 1, ids + Uint256.SIZE, amounts + Uint256.SIZE)
@@ -752,10 +737,29 @@ func add_to_receiver{
         receiver: felt
     ):
     let (receiver_balance: Uint256) = ERC1155_balances.read(id, receiver)
+    let (new_balance: Uint256, is_overflow) = uint256_add(receiver_balance, amount)
     with_attr error_message("ERC1155: balance overflow"):
-        let (new_balance: Uint256) = SafeUint256.add(receiver_balance, amount)
+        assert is_overflow = 0
     end
     ERC1155_balances.write(id, receiver, new_balance)
+    return ()
+end
+
+func deduct_from{
+        syscall_ptr: felt*,
+        pedersen_ptr: HashBuiltin*,
+        range_check_ptr
+    }(
+        id: Uint256,
+        amount: Uint256, 
+        from_: felt
+    ):
+    alloc_locals
+    let (local from_balance: Uint256) = ERC1155_balances.read(id, from_)
+    let (is_le) = uint256_le(amount, from_balance)
+    assert is_le = TRUE
+    let (new_balance: Uint256) = uint256_sub(from_balance, amount)
+    ERC1155_balances.write(id, from_, new_balance)
     return ()
 end
 
@@ -764,6 +768,15 @@ func check_id{range_check_ptr}(id: Uint256):
     let id_high = id.high
     with_attr error_message("ERC1155: id ({id_low}, {id_high}) is not a valid Uint256"):
         uint256_check(id)
+    end
+    return ()
+end
+
+func check_amount{range_check_ptr}(amount: Uint256):
+    let amount_low = amount.low
+    let amount_high = amount.high
+    with_attr error_message("ERC1155: amount ({amount_low}, {amount_high}) is not a valid Uint256"):
+        uint256_check(amount)
     end
     return ()
 end
